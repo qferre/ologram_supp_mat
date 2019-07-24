@@ -1,12 +1,14 @@
 import os
 import glob
+from snakemake.utils import R
 
 workdir: os.getcwd()
 
 rule all:
     input: "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
-           expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"])
-
+           expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
+           expand("output/bedtools_fisher/bedtools_fisher_{region}.txt", region=['introns', 'promoters']), \
+           expand("output/binomial_test/binomial_test_{region}.txt", region=['introns', 'promoters'])
 #--------------------------------------------------------------
 # Retrieve a set of peaks (GRCh38, H3K4me3, Homo sapiens K562,
 # ENCFF616DLO). Keep only conventional chromosomes
@@ -134,7 +136,7 @@ rule supp_fig3:
 # overlaps between H3K4me3 and promoter/introns                  
 #--------------------------------------------------------------
 
-def get_region(wildcard):
+def get_region(wildcards):
     file_list = glob.glob('output/supp_fig3/tmp/ologram*pygtftk_*.bed')
     file_list = [x for x in file_list if "_" + wildcards.region + "_" in x]
     return file_list[0]
@@ -148,7 +150,11 @@ rule bedtools_fisher:
     params: region=get_region
     output: "output/bedtools_fisher/bedtools_fisher_{region}.txt"
     shell: """
-    bedtools fisher -b {params.region} -a {input.peak} -g {input.chrom} > {output}
+    bedtools sort -i {params.region} | bedtools merge > {params.region}.tmp
+    bedtools sort -i {input.peak} | bedtools merge > {input.peak}.tmp
+    sort {input.chrom} > {input.chrom}.tmp
+    bedtools fisher -b {params.region}.tmp -a {input.peak}.tmp -g {input.chrom}.tmp > {output}
+    rm -f {params.region}.tmp {input.peak}.tmp {input.chrom}.tmp
     """
 
 #--------------------------------------------------------------
@@ -158,14 +164,42 @@ rule bedtools_fisher:
 # NB: Given that CEAS does not provide an annotation
 # database for hg38 we implemented this simple solution
 # to emulate CEAS approach.
+# NB: we will consider here than genome size is of
+# hg38 is 2913022398 (see https://tinyurl.com/y6j367hv)
 #--------------------------------------------------------------
 
-rule binomial_test:
+# here, the number of succes is the number of time H3K4me3 intersect a region
+rule compute_nb_success:
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo"
-        params: region=get_region
+    params: region=get_region
+    output: "output/bedtools_intersect/bedtools_intersect_{region}.txt"
+    shell: """
+    bedtools intersect -a {input.peak} -b {params.region} -wa | sort | uniq > {output}
+    """
+def capitalize_region_name(wildcards):
+    return wildcards.region.capitalize()
+
+
+rule binomial_test:
+    input: pdf="output/supp_fig3/supplfig3.pdf", \
+           intersections="output/bedtools_intersect/bedtools_intersect_{region}.txt", \
+           peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
+           chrom="input/hg38.chromInfo"
+    params: region=capitalize_region_name, region_bed=get_region, hg38_size=2913022398
     output: "output/binomial_test/binomial_test_{region}.txt"
-    shell: R('''
-           
-           ''')
+    run: R('''
+             nb_intersections <- nrow(read.table('{input.intersections}'))
+             nb_trials <- nrow(read.table('{input.peak}'))
+             region_bed <- read.table('{params.region_bed}', head=F)
+             sum_labeled_nuc <- sum(region_bed[,3] - region_bed[,2])
+             prob <- sum_labeled_nuc/{params.hg38_size}
+             p_val <- pbinom(q=nb_intersections-1, 
+                             size=nb_trials, 
+                             prob=prob, 
+                             lower.tail = FALSE)
+             out_df <- data.frame(nb_success=nb_intersections, nb_trials=nb_trials,
+                               prob=prob,p_val=p_val, row.names='{params.region}')
+             write.table(out_df, file='{output}', col.names=NA, quote=F)
+             ''')
