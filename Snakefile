@@ -199,7 +199,9 @@ rule binomial_test:
                              size=nb_trials, 
                              prob=prob, 
                              lower.tail = FALSE)
-             out_df <- data.frame(nb_success=nb_intersections, nb_trials=nb_trials,
-                               prob=prob,p_val=p_val, row.names='{params.region}')
+             out_df <- data.frame(nb_success=nb_intersections, 
+                                  sum_labeled_nuc=sum_labeled_nuc,genome_size={params.hg38_size},
+                                  nb_trials=nb_trials,
+                                  prob=prob,p_val=p_val, row.names='{params.region}')
              write.table(out_df, file='{output}', col.names=NA, quote=F)
              ''')
