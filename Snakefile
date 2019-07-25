@@ -4,11 +4,13 @@ from snakemake.utils import R
 
 workdir: os.getcwd()
 
+
 rule all:
     input: "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
            expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
-           expand("output/bedtools_fisher/bedtools_fisher_{region}.txt", region=['introns', 'promoters']), \
-           expand("output/binomial_test/binomial_test_{region}.txt", region=['introns', 'promoters'])
+           expand("output/bedtools_fisher/bedtools_fisher_{region}.txt", region=['introns', 'promoters', 'exons']), \
+           expand("output/binomial_test/binomial_test_{region}.txt", region=['introns', 'promoters',  'exons']), \
+
 #--------------------------------------------------------------
 # Retrieve a set of peaks (GRCh38, H3K4me3, Homo sapiens K562,
 # ENCFF616DLO). Keep only conventional chromosomes
@@ -124,10 +126,16 @@ rule supp_fig2:
 
 rule supp_fig3:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
-    output: "output/supp_fig3/supplfig3.pdf"
+    output: pdf="output/supp_fig3/supplfig3.pdf", \
+            intron='output/supp_fig3/tmp/ologram_introns_pygtftk.bed', \
+            exon='output/supp_fig3/tmp/ologram_exons_pygtftk.bed', \
+            promoter='output/supp_fig3/tmp/ologram_promoters_pygtftk.bed'
     shell: '''
-    gtftk ologram -V 1 -c hg38 -p {input.bed} -k 8 -o output/supp_fig3 -D \
-    -i {input.gtf} -u 1000 -d 1000 -K output/supp_fig3/tmp -pf output/supp_fig3/supplfig3.pdf
+    gtftk ologram -y -V 1 -c hg38 -p {input.bed} -k 8 -o output/supp_fig3 -D \
+    -i {input.gtf} -u 1000 -d 1000 -K output/supp_fig3/tmp -pf {output.pdf}
+    mv output/supp_fig3/tmp/ologram_introns_pygtftk_*.bed {output.intron}
+    mv output/supp_fig3/tmp/ologram_exon_pygtftk_*.bed {output.exon}
+    mv output/supp_fig3/tmp/ologram_promoters_pygtftk_*.bed {output.promoter}
     '''
 
 #--------------------------------------------------------------
@@ -136,25 +144,21 @@ rule supp_fig3:
 # overlaps between H3K4me3 and promoter/introns                  
 #--------------------------------------------------------------
 
-def get_region(wildcards):
-    file_list = glob.glob('output/supp_fig3/tmp/ologram*pygtftk_*.bed')
-    file_list = [x for x in file_list if "_" + wildcards.region + "_" in x]
-    return file_list[0]
 
 rule bedtools_fisher:
     # pdf input won't be used but indicates that this rule
     # should be preformed after supplementary figure 3
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
-           chrom="input/hg38.chromInfo"
-    params: region=get_region
+           chrom="input/hg38.chromInfo", \
+           region='output/supp_fig3/tmp/ologram_{region}_pygtftk.bed'
     output: "output/bedtools_fisher/bedtools_fisher_{region}.txt"
     shell: """
-    bedtools sort -i {params.region} | bedtools merge > {params.region}.tmp
+    bedtools sort -i {input.region} | bedtools merge > {input.region}.tmp
     bedtools sort -i {input.peak} | bedtools merge > {input.peak}.tmp
     sort {input.chrom} > {input.chrom}.tmp
-    bedtools fisher -b {params.region}.tmp -a {input.peak}.tmp -g {input.chrom}.tmp > {output}
-    rm -f {params.region}.tmp {input.peak}.tmp {input.chrom}.tmp
+    time bedtools fisher -b {input.region}.tmp -a {input.peak}.tmp -g {input.chrom}.tmp > {output}
+    rm -f {input.region}.tmp {input.peak}.tmp {input.chrom}.tmp
     """
 
 #--------------------------------------------------------------
@@ -172,11 +176,11 @@ rule bedtools_fisher:
 rule compute_nb_success:
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
-           chrom="input/hg38.chromInfo"
-    params: region=get_region
+           chrom="input/hg38.chromInfo", \
+           region='output/supp_fig3/tmp/ologram_{region}_pygtftk.bed'
     output: "output/bedtools_intersect/bedtools_intersect_{region}.txt"
     shell: """
-    bedtools intersect -a {input.peak} -b {params.region} -wa | sort | uniq > {output}
+    bedtools intersect -a {input.peak} -b {input.region} -wa | sort | uniq > {output}
     """
 def capitalize_region_name(wildcards):
     return wildcards.region.capitalize()
@@ -186,13 +190,14 @@ rule binomial_test:
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            intersections="output/bedtools_intersect/bedtools_intersect_{region}.txt", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
-           chrom="input/hg38.chromInfo"
-    params: region=capitalize_region_name, region_bed=get_region, hg38_size=2913022398
+           chrom="input/hg38.chromInfo", \
+           region_bed='output/supp_fig3/tmp/ologram_{region}_pygtftk.bed'
+    params: region=capitalize_region_name, hg38_size=2913022398
     output: "output/binomial_test/binomial_test_{region}.txt"
     run: R('''
              nb_intersections <- nrow(read.table('{input.intersections}'))
              nb_trials <- nrow(read.table('{input.peak}'))
-             region_bed <- read.table('{params.region_bed}', head=F)
+             region_bed <- read.table('{input.region_bed}', head=F)
              sum_labeled_nuc <- sum(region_bed[,3] - region_bed[,2])
              prob <- sum_labeled_nuc/{params.hg38_size}
              p_val <- pbinom(q=nb_intersections-1, 
@@ -205,3 +210,5 @@ rule binomial_test:
                                   prob=prob,p_val=p_val, row.names='{params.region}')
              write.table(out_df, file='{output}', col.names=NA, quote=F)
              ''')
+
+    
