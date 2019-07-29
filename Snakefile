@@ -4,12 +4,13 @@ from snakemake.utils import R
 
 workdir: os.getcwd()
 
-
+REGIONS = ["exon-11-363", "exon-1-2", "exon-2-3", "exon-3-6", "exon-6-11", 'introns', 'promoters', 'exons']
 rule all:
     input: "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
+           "output/supp_fig2/supplfig2.pdf", \
            expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
-           expand("output/bedtools_fisher/bedtools_fisher_{region}.txt", region=['introns', 'promoters', 'exons']), \
-           expand("output/binomial_test/binomial_test_{region}.txt", region=['introns', 'promoters',  'exons']), \
+           expand("output/bedtools_fisher/bedtools_fisher_{region}.txt", region=REGIONS), \
+           expand("output/binomial_test/binomial_test_{region}.txt", region=REGIONS), \
 
 #--------------------------------------------------------------
 # Retrieve a set of peaks (GRCh38, H3K4me3, Homo sapiens K562,
@@ -84,7 +85,7 @@ rule supp_fig1:
     params: ref=get_chrom_hmm_file, labels=get_chrom_hmm_label
     output: "output/supp_fig1_{peak}/supplfig1_{peak}.pdf"
     shell: '''
-    gtftk ologram -z  -c hg38  -p {input.peak} -V 1 --more-bed {params.ref}  \
+    gtftk ologram -z -y  -c hg38  -p {input.peak} -V 1 --more-bed {params.ref}  \
        --more-bed-labels {params.labels}  -o output/supp_fig1_{wildcards.peak}  \
        -V 3 -k 8 -pf output/supp_fig1_{wildcards.peak}/supplfig1_{wildcards.peak}.pdf
     '''
@@ -99,14 +100,26 @@ rule supp_fig1:
 
 rule supp_fig2:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", peak="input/peaks/H3K4me3_ENCFF616DLO.bed"
-    output: "output/supp_fig2/supplfig2.pdf"
+    output: pdf="output/supp_fig2/supplfig2.pdf", \
+            bed1="output/regions_benchmark/ologram_exon-11-363_pygtftk.bed", \
+            bed2="output/regions_benchmark/ologram_exon-1-2_pygtftk.bed", \
+            bed3="output/regions_benchmark/ologram_exon-2-3_pygtftk.bed", \
+            bed4="output/regions_benchmark/ologram_exon-3-6_pygtftk.bed", \
+            bed5="output/regions_benchmark/ologram_exon-6-11_pygtftk.bed"
     shell: """
-    gtftk add_exon_nb -k exon_nbr -i {input.gtf} | \
+       mkdir -p output/supp_fig2/tmp
+       gtftk add_exon_nb -k exon_nbr -i {input.gtf} | \
        gtftk discretize_key -p -d exon_nbr_cat -n 5 -k exon_nbr | \
-       gtftk ologram -p {input.peak} -c hg38 -D -n -m exon_nbr_cat \
-       -pf output/supp_fig2/supplfig2.pdf  -k 8 -V 3 \
-       -j summed_bp_overlaps_true -k 8 -D -o output/supp_fig2
-"""
+       gtftk ologram -p {input.peak} -c hg38 -D -n -y -m exon_nbr_cat \
+       -pf {output.pdf}  -k 8 -V 3 \
+       -j summed_bp_overlaps_true -k 8 -D -o output/supp_fig2 \
+       -K output/supp_fig2/tmp
+    mv output/supp_fig2/tmp/ologram_exon_nbr_cat__11_0_363_0_*.bed {output.bed1}
+    mv output/supp_fig2/tmp/ologram_exon_nbr_cat__1_0_2_0_*.bed {output.bed2}
+    mv output/supp_fig2/tmp/ologram_exon_nbr_cat__2_0_3_0_*.bed {output.bed3}
+    mv output/supp_fig2/tmp/ologram_exon_nbr_cat__3_0_6_0_*.bed {output.bed4}
+    mv output/supp_fig2/tmp/ologram_exon_nbr_cat__6_0_11_0_*.bed {output.bed5}
+    """
     
 #--------------------------------------------------------------
 # Supplementary file 3: OLOGRAM on all genomic features of the GTF
@@ -127,10 +140,11 @@ rule supp_fig2:
 rule supp_fig3:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
     output: pdf="output/supp_fig3/supplfig3.pdf", \
-            intron='output/supp_fig3/tmp/ologram_introns_pygtftk.bed', \
-            exon='output/supp_fig3/tmp/ologram_exons_pygtftk.bed', \
-            promoter='output/supp_fig3/tmp/ologram_promoters_pygtftk.bed'
+            intron='output/regions_benchmark/ologram_introns_pygtftk.bed', \
+            exon='output/regions_benchmark/ologram_exons_pygtftk.bed', \
+            promoter='output/regions_benchmark/ologram_promoters_pygtftk.bed'
     shell: '''
+    mkdir -p output/regions_benchmark
     gtftk ologram -y -V 1 -c hg38 -p {input.bed} -k 8 -o output/supp_fig3 -D \
     -i {input.gtf} -u 1000 -d 1000 -K output/supp_fig3/tmp -pf {output.pdf}
     mv output/supp_fig3/tmp/ologram_introns_pygtftk_*.bed {output.intron}
@@ -151,7 +165,7 @@ rule bedtools_fisher:
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region='output/supp_fig3/tmp/ologram_{region}_pygtftk.bed'
+           region='output/regions_benchmark/ologram_{region}_pygtftk.bed'
     output: "output/bedtools_fisher/bedtools_fisher_{region}.txt"
     shell: """
     bedtools sort -i {input.region} | bedtools merge > {input.region}.tmp
@@ -174,10 +188,11 @@ rule bedtools_fisher:
 
 # here, the number of succes is the number of time H3K4me3 intersect a region
 rule compute_nb_success:
-    input: pdf="output/supp_fig3/supplfig3.pdf", \
+    input: pdf3="output/supp_fig3/supplfig3.pdf", \
+           pdf2="output/supp_fig2/supplfig2.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region='output/supp_fig3/tmp/ologram_{region}_pygtftk.bed'
+           region='output/regions_benchmark/ologram_{region}_pygtftk.bed'
     output: "output/bedtools_intersect/bedtools_intersect_{region}.txt"
     shell: """
     bedtools intersect -a {input.peak} -b {input.region} -wa | sort | uniq > {output}
@@ -187,11 +202,12 @@ def capitalize_region_name(wildcards):
 
 
 rule binomial_test:
-    input: pdf="output/supp_fig3/supplfig3.pdf", \
+    input: pdf3="output/supp_fig3/supplfig3.pdf", \
+           pdf2="output/supp_fig2/supplfig2.pdf", \
            intersections="output/bedtools_intersect/bedtools_intersect_{region}.txt", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region_bed='output/supp_fig3/tmp/ologram_{region}_pygtftk.bed'
+           region_bed='output/regions_benchmark/ologram_{region}_pygtftk.bed'
     params: region=capitalize_region_name, hg38_size=2913022398
     output: "output/binomial_test/binomial_test_{region}.txt"
     run: R('''
