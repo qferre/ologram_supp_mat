@@ -4,14 +4,21 @@ from snakemake.utils import R
 
 workdir: os.getcwd()
 
-REGIONS = ["exon-11-363", "exon-1-2", "exon-2-3", "exon-3-6", "exon-6-11", 'introns', 'promoters', 'exons']
-rule all:
-    input: "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
-           "output/supp_fig2/supplfig2.pdf", \
-           expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
-           expand("output/bedtools_fisher/bedtools_fisher_{region}.txt", region=REGIONS), \
-           expand("output/binomial_test/binomial_test_{region}.txt", region=REGIONS), \
+REGIONS = ["exon-11-363", "exon-1-2",
+           "exon-2-3", "exon-3-6",
+           "exon-6-11", 'introns',
+           'promoters', 'exons',
+           'random', 'random-nuc',
+           'shuffled-H3K4me3', 'shuffled-H3K4me3-midpoints']
 
+rule all:
+    input:  "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
+            "output/supp_fig2/supplfig2.pdf", \
+            expand("output/supp_fig4/ologram/ologram_{region}_regions.pdf", region=REGIONS), \
+            expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
+            expand("output/supp_fig4/bedtools_fisher/bedtools_fisher_{region}.txt", region=REGIONS), \
+            expand("output/supp_fig4/binomial_test/binomial_test_{region}.txt", region=REGIONS)
+    
 #--------------------------------------------------------------
 # Retrieve a set of peaks (GRCh38, H3K4me3, Homo sapiens K562,
 # ENCFF616DLO). Keep only conventional chromosomes
@@ -101,11 +108,11 @@ rule supp_fig1:
 rule supp_fig2:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", peak="input/peaks/H3K4me3_ENCFF616DLO.bed"
     output: pdf="output/supp_fig2/supplfig2.pdf", \
-            bed1="output/regions_benchmark/ologram_exon-11-363_pygtftk.bed", \
-            bed2="output/regions_benchmark/ologram_exon-1-2_pygtftk.bed", \
-            bed3="output/regions_benchmark/ologram_exon-2-3_pygtftk.bed", \
-            bed4="output/regions_benchmark/ologram_exon-3-6_pygtftk.bed", \
-            bed5="output/regions_benchmark/ologram_exon-6-11_pygtftk.bed"
+            bed1="output/supp_fig4/benchmarked_regions/ologram_exon-11-363_pygtftk.bed", \
+            bed2="output/supp_fig4/benchmarked_regions/ologram_exon-1-2_pygtftk.bed", \
+            bed3="output/supp_fig4/benchmarked_regions/ologram_exon-2-3_pygtftk.bed", \
+            bed4="output/supp_fig4/benchmarked_regions/ologram_exon-3-6_pygtftk.bed", \
+            bed5="output/supp_fig4/benchmarked_regions/ologram_exon-6-11_pygtftk.bed"
     shell: """
        mkdir -p output/supp_fig2/tmp
        gtftk add_exon_nb -k exon_nbr -i {input.gtf} | \
@@ -140,9 +147,9 @@ rule supp_fig2:
 rule supp_fig3:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
     output: pdf="output/supp_fig3/supplfig3.pdf", \
-            intron='output/regions_benchmark/ologram_introns_pygtftk.bed', \
-            exon='output/regions_benchmark/ologram_exons_pygtftk.bed', \
-            promoter='output/regions_benchmark/ologram_promoters_pygtftk.bed'
+            intron='output/supp_fig4/benchmarked_regions/ologram_introns_pygtftk.bed', \
+            exon='output/supp_fig4/benchmarked_regions/ologram_exons_pygtftk.bed', \
+            promoter='output/supp_fig4/benchmarked_regions/ologram_promoters_pygtftk.bed'
     shell: '''
     mkdir -p output/regions_benchmark
     gtftk ologram -y -V 1 -c hg38 -p {input.bed} -k 8 -o output/supp_fig3 -D \
@@ -151,6 +158,59 @@ rule supp_fig3:
     mv output/supp_fig3/tmp/ologram_exon_pygtftk_*.bed {output.exon}
     mv output/supp_fig3/tmp/ologram_promoters_pygtftk_*.bed {output.promoter}
     '''
+
+#--------------------------------------------------------------
+# Supplementary file 4: Create a set of random regions
+#--------------------------------------------------------------
+
+rule random_regions:
+    input: chr="input/hg38.chromInfo"
+    output: "output/supp_fig4/benchmarked_regions/ologram_random_pygtftk.bed"
+    shell: '''
+    bedtools random -g {input.chr} -l 1000 -n 20000 -seed 123 | \
+    bedtools sort | bedtools merge | > {output}
+    '''
+    
+rule random_nucleotides:
+    input: chr="input/hg38.chromInfo"
+    output: "output/supp_fig4/benchmarked_regions/ologram_random-nuc_pygtftk.bed"
+    shell: '''
+    bedtools random -g {input.chr} -l 1 -n 20000 -seed 123 | bedtools sort | bedtools merge > {output}
+    '''
+
+#--------------------------------------------------------------
+# Supplementary file 4: Create a set of shuffled regions
+#--------------------------------------------------------------
+
+rule shuffle_region:
+    input: chr="input/hg38.chromInfo", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
+    output: "output/supp_fig4/benchmarked_regions/ologram_shuffled-H3K4me3_pygtftk.bed"
+    shell: '''
+    bedtools shuffle -chrom -g {input.chr} -i {input.bed} -noOverlapping -seed 123  > {output}
+    '''
+
+rule shuffled_midpoint:
+    input: chr="input/hg38.chromInfo", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
+    output: "output/supp_fig4/benchmarked_regions/ologram_shuffled-H3K4me3-midpoints_pygtftk.bed"
+    shell: '''
+    gtftk midpoints -i {input.bed} -V 1 | \
+    bedtools shuffle -chrom -g {input.chr} -noOverlapping -seed 123  > {output}
+    '''
+
+#--------------------------------------------------------------
+# Supplementary file 4: results obtained using OLOGRAM
+#--------------------------------------------------------------
+
+
+rule ologram_on_benchmarked_regions:
+    input:  bed="input/peaks/H3K4me3_ENCFF616DLO.bed", region="output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed"
+    output: pdf="output/supp_fig4/ologram/ologram_{region}_regions.pdf"
+    shell: '''
+    mkdir -p output/supp_fig4/ologram/tmp
+    gtftk ologram -z -y -V 2 -c hg38 -p {input.bed} -k 8 -o output/supp_fig4/ologram -D \
+    -b {input.region} -K output/supp_fig4/ologram/tmp -pf {output.pdf} -l {wildcards.region}
+    '''
+
 
 #--------------------------------------------------------------
 # Supplementary file 4: The results obtained with bedtools
@@ -165,8 +225,8 @@ rule bedtools_fisher:
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region='output/regions_benchmark/ologram_{region}_pygtftk.bed'
-    output: "output/bedtools_fisher/bedtools_fisher_{region}.txt"
+           region='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
+    output: "output/supp_fig4/bedtools_fisher/bedtools_fisher_{region}.txt"
     shell: """
     bedtools sort -i {input.region} | bedtools merge > {input.region}.tmp
     bedtools sort -i {input.peak} | bedtools merge > {input.peak}.tmp
@@ -174,6 +234,8 @@ rule bedtools_fisher:
     time bedtools fisher -b {input.region}.tmp -a {input.peak}.tmp -g {input.chrom}.tmp > {output}
     rm -f {input.region}.tmp {input.peak}.tmp {input.chrom}.tmp
     """
+
+
 
 #--------------------------------------------------------------
 # Supplementary file 4: The results obtained with a binomial
@@ -192,11 +254,12 @@ rule compute_nb_success:
            pdf2="output/supp_fig2/supplfig2.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region='output/regions_benchmark/ologram_{region}_pygtftk.bed'
-    output: "output/bedtools_intersect/bedtools_intersect_{region}.txt"
+           region='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
+    output: "output/supp_fig4/bedtools_intersect/bedtools_intersect_{region}.txt"
     shell: """
     bedtools intersect -a {input.peak} -b {input.region} -wa | sort | uniq > {output}
     """
+
 def capitalize_region_name(wildcards):
     return wildcards.region.capitalize()
 
@@ -204,26 +267,34 @@ def capitalize_region_name(wildcards):
 rule binomial_test:
     input: pdf3="output/supp_fig3/supplfig3.pdf", \
            pdf2="output/supp_fig2/supplfig2.pdf", \
-           intersections="output/bedtools_intersect/bedtools_intersect_{region}.txt", \
+           intersections="output/supp_fig4/bedtools_intersect/bedtools_intersect_{region}.txt", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region_bed='output/regions_benchmark/ologram_{region}_pygtftk.bed'
+           region_bed='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
     params: region=capitalize_region_name, hg38_size=2913022398
-    output: "output/binomial_test/binomial_test_{region}.txt"
+    output: "output/supp_fig4/binomial_test/binomial_test_{region}.txt"
     run: R('''
              nb_intersections <- nrow(read.table('{input.intersections}'))
              nb_trials <- nrow(read.table('{input.peak}'))
              region_bed <- read.table('{input.region_bed}', head=F)
              sum_labeled_nuc <- sum(region_bed[,3] - region_bed[,2])
              prob <- sum_labeled_nuc/{params.hg38_size}
-             p_val <- pbinom(q=nb_intersections-1, 
+             expected_val <- prob * nb_trials
+             p_val_more <- pbinom(q=nb_intersections-1, 
                              size=nb_trials, 
                              prob=prob, 
                              lower.tail = FALSE)
-             out_df <- data.frame(nb_success=nb_intersections, 
-                                  sum_labeled_nuc=sum_labeled_nuc,genome_size={params.hg38_size},
+             p_val_less <- pbinom(q=nb_intersections, 
+                                  size=nb_trials, 
+                                  prob=prob, 
+                                  lower.tail = TRUE)
+             out_df <- t(data.frame(nb_success=nb_intersections, 
+                                  sum_labeled_nuc=sum_labeled_nuc,
+                                  genome_size={params.hg38_size},
                                   nb_trials=nb_trials,
-                                  prob=prob,p_val=p_val, row.names='{params.region}')
+                                  expected_val=expected_val,
+                                  prob=prob,p_val_more=p_val_more, 
+                                  p_val_less=p_val_less, row.names='{params.region}'))
              write.table(out_df, file='{output}', col.names=NA, quote=F)
              ''')
 
