@@ -1,23 +1,32 @@
 import os
 import glob
 from snakemake.utils import R
+import re
 
 workdir: os.getcwd()
+
 
 REGIONS = ["exon-11-363", "exon-1-2",
            "exon-2-3", "exon-3-6",
            "exon-6-11", 'introns',
            'promoters', 'exons',
-           'random', 'random-nuc',
-           'shuffled-H3K4me3', 'shuffled-H3K4me3-midpoints']
+           'random']
+
+H3K4_TYPE = ['H3K4me3_ENCFF616DLO_midpoint',
+             'H3K4me3_ENCFF616DLO']
+# Genome size
+# See https://tinyurl.com/y6j367hv
+
+HG38_SIZE = 2913022398
+
 
 rule all:
     input:  "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
             "output/supp_fig2/supplfig2.pdf", \
-            expand("output/supp_fig4/ologram/ologram_{region}_regions.pdf", region=REGIONS), \
+            expand("output/supp_fig4/ologram_{region}/ologram_{region}_regions.pdf", region=["random"]), \
             expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
             expand("output/supp_fig4/bedtools_fisher/bedtools_fisher_{region}.txt", region=REGIONS), \
-            expand("output/supp_fig4/binomial_test/binomial_test_{region}.txt", region=REGIONS)
+            expand("output/supp_fig4/binomial_test/{h3k4type}/binomial_test_{region}.txt", region=REGIONS, h3k4type=H3K4_TYPE)
     
 #--------------------------------------------------------------
 # Retrieve a set of peaks (GRCh38, H3K4me3, Homo sapiens K562,
@@ -168,47 +177,35 @@ rule random_regions:
     output: "output/supp_fig4/benchmarked_regions/ologram_random_pygtftk.bed"
     shell: '''
     bedtools random -g {input.chr} -l 1000 -n 20000 -seed 123 | \
-    bedtools sort | bedtools merge | > {output}
-    '''
-    
-rule random_nucleotides:
-    input: chr="input/hg38.chromInfo"
-    output: "output/supp_fig4/benchmarked_regions/ologram_random-nuc_pygtftk.bed"
-    shell: '''
-    bedtools random -g {input.chr} -l 1 -n 20000 -seed 123 | bedtools sort | bedtools merge > {output}
+    bedtools sort | bedtools merge > {output}
     '''
 
-#--------------------------------------------------------------
-# Supplementary file 4: Create a set of shuffled regions
-#--------------------------------------------------------------
-
-rule shuffle_region:
+# Note: by default gtftk midpoints returns a midpoints of size one
+# (for regions with odd size) or two (or regions with even size).
+# The awk onliner convert all regions to single nucleotide length regions.
+rule h3k4me3_midpoint:
     input: chr="input/hg38.chromInfo", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
-    output: "output/supp_fig4/benchmarked_regions/ologram_shuffled-H3K4me3_pygtftk.bed"
-    shell: '''
-    bedtools shuffle -chrom -g {input.chr} -i {input.bed} -noOverlapping -seed 123  > {output}
-    '''
-
-rule shuffled_midpoint:
-    input: chr="input/hg38.chromInfo", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
-    output: "output/supp_fig4/benchmarked_regions/ologram_shuffled-H3K4me3-midpoints_pygtftk.bed"
+    output: "input/peaks/H3K4me3_ENCFF616DLO_midpoint.bed"
     shell: '''
     gtftk midpoints -i {input.bed} -V 1 | \
-    bedtools shuffle -chrom -g {input.chr} -noOverlapping -seed 123  > {output}
+        awk 'BEGIN{{FS=OFS="\\t"}}{{if($3-$2>1){{print $1,$2,$3-1}}else{{print $1,$2,$3}}}}' > {output}
     '''
 
 #--------------------------------------------------------------
 # Supplementary file 4: results obtained using OLOGRAM
 #--------------------------------------------------------------
 
+def get_label(wildcards):
+    return re.sub('\W+', '_', wildcards.region)
 
 rule ologram_on_benchmarked_regions:
     input:  bed="input/peaks/H3K4me3_ENCFF616DLO.bed", region="output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed"
-    output: pdf="output/supp_fig4/ologram/ologram_{region}_regions.pdf"
+    output: pdf="output/supp_fig4/ologram_{region}/ologram_{region}_regions.pdf"
+    params: label=get_label
     shell: '''
     mkdir -p output/supp_fig4/ologram/tmp
-    gtftk ologram -z -y -V 2 -c hg38 -p {input.bed} -k 8 -o output/supp_fig4/ologram -D \
-    -b {input.region} -K output/supp_fig4/ologram/tmp -pf {output.pdf} -l {wildcards.region}
+    gtftk ologram -z -y -V 2 -c hg38 -p {input.bed} -k 8 -o output/supp_fig4/ologram_{wildcards.region} -D \
+    -b {input.region} -K output/supp_fig4/ologram_{wildcards.region}/tmp -pf {output.pdf} -l {params.label}
     '''
 
 
@@ -248,16 +245,16 @@ rule bedtools_fisher:
 # hg38 is 2913022398 (see https://tinyurl.com/y6j367hv)
 #--------------------------------------------------------------
 
-# here, the number of succes is the number of time H3K4me3 intersect a region
-rule compute_nb_success:
+# here, the number of succes is the number of time H3K4me3 intersects a region
+rule bedtools_intersect:
     input: pdf3="output/supp_fig3/supplfig3.pdf", \
            pdf2="output/supp_fig2/supplfig2.pdf", \
-           peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
+           peak="input/peaks/{h3k4type}.bed", \
            chrom="input/hg38.chromInfo", \
            region='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
-    output: "output/supp_fig4/bedtools_intersect/bedtools_intersect_{region}.txt"
+    output: "output/supp_fig4/bedtools_intersect/{h3k4type}/bedtools_intersect_{region}.bed"
     shell: """
-    bedtools intersect -a {input.peak} -b {input.region} -wa | sort | uniq > {output}
+    bedtools intersect -a {input.peak} -b {input.region} -wa -u > {output}
     """
 
 def capitalize_region_name(wildcards):
@@ -267,12 +264,12 @@ def capitalize_region_name(wildcards):
 rule binomial_test:
     input: pdf3="output/supp_fig3/supplfig3.pdf", \
            pdf2="output/supp_fig2/supplfig2.pdf", \
-           intersections="output/supp_fig4/bedtools_intersect/bedtools_intersect_{region}.txt", \
-           peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
+           intersections="output/supp_fig4/bedtools_intersect/{h3k4type}/bedtools_intersect_{region}.bed", \
+           peak="input/peaks/{h3k4type}.bed", \
            chrom="input/hg38.chromInfo", \
            region_bed='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
-    params: region=capitalize_region_name, hg38_size=2913022398
-    output: "output/supp_fig4/binomial_test/binomial_test_{region}.txt"
+    params: region=capitalize_region_name, hg38_size=HG38_SIZE
+    output: "output/supp_fig4/binomial_test/{h3k4type}/binomial_test_{region}.txt"
     run: R('''
              nb_intersections <- nrow(read.table('{input.intersections}'))
              nb_trials <- nrow(read.table('{input.peak}'))
@@ -289,12 +286,14 @@ rule binomial_test:
                                   prob=prob, 
                                   lower.tail = TRUE)
              out_df <- t(data.frame(nb_success=nb_intersections, 
-                                  sum_labeled_nuc=sum_labeled_nuc,
-                                  genome_size={params.hg38_size},
-                                  nb_trials=nb_trials,
-                                  expected_val=expected_val,
-                                  prob=prob,p_val_more=p_val_more, 
-                                  p_val_less=p_val_less, row.names='{params.region}'))
+                                    sum_labeled_nuc=sum_labeled_nuc,
+                                    genome_size={params.hg38_size},
+                                    nb_trials=nb_trials,
+                                    expected_val=expected_val,
+                                    prob=prob,
+                                    p_val_more=p_val_more, 
+                                    p_val_less=p_val_less, 
+                                    row.names='{params.region}'))
              write.table(out_df, file='{output}', col.names=NA, quote=F)
              ''')
 
