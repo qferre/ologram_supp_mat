@@ -23,11 +23,11 @@ HG38_SIZE = 2913022398
 rule all:
     input:  "output/supp_fig3/supplfig3.pdf", "input/hg38.chromInfo", \
             "output/supp_fig2/supplfig2.pdf", \
-            expand("output/supp_fig4/ologram_{region}/ologram_{region}_regions.pdf", region=["random"]), \
+            expand("output/supp_table2/ologram_{region}/ologram_{region}_regions.pdf", region=["random"]), \
             expand("output/supp_fig1_{peak}/supplfig1_{peak}.pdf", peak=["H3K4me3_ENCFF616DLO", "P300_ENCFF433PKW"]), \
-            expand("output/supp_fig4/bedtools_fisher/bedtools_fisher_{region}.txt", region=REGIONS), \
-            expand("output/supp_fig4/binomial_test/{h3k4type}/binomial_test_{region}.txt", region=REGIONS, h3k4type=H3K4_TYPE)
-    
+            expand("output/supp_table2/bedtools_fisher/bedtools_fisher_{region}.txt", region=REGIONS), \
+            expand("output/supp_table2/binomial_test/{h3k4type}/binomial_test_{region}.txt", region=REGIONS, h3k4type=H3K4_TYPE)
+
 #--------------------------------------------------------------
 # Retrieve a set of peaks (GRCh38, H3K4me3, Homo sapiens K562,
 # ENCFF616DLO). Keep only conventional chromosomes
@@ -117,11 +117,11 @@ rule supp_fig1:
 rule supp_fig2:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", peak="input/peaks/H3K4me3_ENCFF616DLO.bed"
     output: pdf="output/supp_fig2/supplfig2.pdf", \
-            bed1="output/supp_fig4/benchmarked_regions/ologram_exon-11-363_pygtftk.bed", \
-            bed2="output/supp_fig4/benchmarked_regions/ologram_exon-1-2_pygtftk.bed", \
-            bed3="output/supp_fig4/benchmarked_regions/ologram_exon-2-3_pygtftk.bed", \
-            bed4="output/supp_fig4/benchmarked_regions/ologram_exon-3-6_pygtftk.bed", \
-            bed5="output/supp_fig4/benchmarked_regions/ologram_exon-6-11_pygtftk.bed"
+            bed1="output/supp_table2/benchmarked_regions/ologram_exon-11-363_pygtftk.bed", \
+            bed2="output/supp_table2/benchmarked_regions/ologram_exon-1-2_pygtftk.bed", \
+            bed3="output/supp_table2/benchmarked_regions/ologram_exon-2-3_pygtftk.bed", \
+            bed4="output/supp_table2/benchmarked_regions/ologram_exon-3-6_pygtftk.bed", \
+            bed5="output/supp_table2/benchmarked_regions/ologram_exon-6-11_pygtftk.bed"
     shell: """
        mkdir -p output/supp_fig2/tmp
        gtftk add_exon_nb -k exon_nbr -i {input.gtf} | \
@@ -136,7 +136,7 @@ rule supp_fig2:
     mv output/supp_fig2/tmp/ologram_exon_nbr_cat__3_0_6_0_*.bed {output.bed4}
     mv output/supp_fig2/tmp/ologram_exon_nbr_cat__6_0_11_0_*.bed {output.bed5}
     """
-    
+
 #--------------------------------------------------------------
 # Supplementary file 3: OLOGRAM on all genomic features of the GTF
 # Only results related to introns are displayed in the finale
@@ -156,9 +156,9 @@ rule supp_fig2:
 rule supp_fig3:
     input: gtf="input/Homo_sapiens_GRCh38_92_chr.gtf", bed="input/peaks/H3K4me3_ENCFF616DLO.bed"
     output: pdf="output/supp_fig3/supplfig3.pdf", \
-            intron='output/supp_fig4/benchmarked_regions/ologram_introns_pygtftk.bed', \
-            exon='output/supp_fig4/benchmarked_regions/ologram_exons_pygtftk.bed', \
-            promoter='output/supp_fig4/benchmarked_regions/ologram_promoters_pygtftk.bed'
+            intron='output/supp_table2/benchmarked_regions/ologram_introns_pygtftk.bed', \
+            exon='output/supp_table2/benchmarked_regions/ologram_exons_pygtftk.bed', \
+            promoter='output/supp_table2/benchmarked_regions/ologram_promoters_pygtftk.bed'
     shell: '''
     mkdir -p output/regions_benchmark
     gtftk ologram -y -V 1 -c hg38 -p {input.bed} -k 8 -o output/supp_fig3 -D \
@@ -169,12 +169,12 @@ rule supp_fig3:
     '''
 
 #--------------------------------------------------------------
-# Supplementary file 4: Create a set of random regions
+# Supplementary table 2 : Create a set of random regions
 #--------------------------------------------------------------
 
 rule random_regions:
     input: chr="input/hg38.chromInfo"
-    output: "output/supp_fig4/benchmarked_regions/ologram_random_pygtftk.bed"
+    output: "output/supp_table2/benchmarked_regions/ologram_random_pygtftk.bed"
     shell: '''
     bedtools random -g {input.chr} -l 1000 -n 20000 -seed 123 | \
     bedtools sort | bedtools merge > {output}
@@ -192,27 +192,27 @@ rule h3k4me3_midpoint:
     '''
 
 #--------------------------------------------------------------
-# Supplementary file 4: results obtained using OLOGRAM
+# Supplementary table 2: results obtained using OLOGRAM
 #--------------------------------------------------------------
 
 def get_label(wildcards):
     return re.sub('\W+', '_', wildcards.region)
 
 rule ologram_on_benchmarked_regions:
-    input:  bed="input/peaks/H3K4me3_ENCFF616DLO.bed", region="output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed"
-    output: pdf="output/supp_fig4/ologram_{region}/ologram_{region}_regions.pdf"
+    input:  bed="input/peaks/H3K4me3_ENCFF616DLO.bed", region="output/supp_table2/benchmarked_regions/ologram_{region}_pygtftk.bed"
+    output: pdf="output/supp_table2/ologram_{region}/ologram_{region}_regions.pdf"
     params: label=get_label
     shell: '''
-    mkdir -p output/supp_fig4/ologram/tmp
-    gtftk ologram -z -y -V 2 -c hg38 -p {input.bed} -k 8 -o output/supp_fig4/ologram_{wildcards.region} -D \
-    -b {input.region} -K output/supp_fig4/ologram_{wildcards.region}/tmp -pf {output.pdf} -l {params.label}
+    mkdir -p output/supp_table2/ologram/tmp
+    gtftk ologram -z -y -V 2 -c hg38 -p {input.bed} -k 8 -o output/supp_table2/ologram_{wildcards.region} -D \
+    -b {input.region} -K output/supp_table2/ologram_{wildcards.region}/tmp -pf {output.pdf} -l {params.label}
     '''
 
 
 #--------------------------------------------------------------
-# Supplementary file 4: The results obtained with bedtools
+# Supplementary table 2: The results obtained with bedtools
 # fisher when checking the significance of
-# overlaps between H3K4me3 and promoter/introns                  
+# overlaps between H3K4me3 and promoter/introns
 #--------------------------------------------------------------
 
 
@@ -222,8 +222,8 @@ rule bedtools_fisher:
     input: pdf="output/supp_fig3/supplfig3.pdf", \
            peak="input/peaks/H3K4me3_ENCFF616DLO.bed", \
            chrom="input/hg38.chromInfo", \
-           region='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
-    output: "output/supp_fig4/bedtools_fisher/bedtools_fisher_{region}.txt"
+           region='output/supp_table2/benchmarked_regions/ologram_{region}_pygtftk.bed'
+    output: "output/supp_table2/bedtools_fisher/bedtools_fisher_{region}.txt"
     shell: """
     bedtools sort -i {input.region} | bedtools merge > {input.region}.tmp
     bedtools sort -i {input.peak} | bedtools merge > {input.peak}.tmp
@@ -235,7 +235,7 @@ rule bedtools_fisher:
 
 
 #--------------------------------------------------------------
-# Supplementary file 4: The results obtained with a binomial
+# Supplementary table 2: The results obtained with a binomial
 # test (cf CEAS) when checking the significance of
 # overlaps between H3K4me3 and promoter/introns
 # NB: Given that CEAS does not provide an annotation
@@ -251,8 +251,8 @@ rule bedtools_intersect:
            pdf2="output/supp_fig2/supplfig2.pdf", \
            peak="input/peaks/{h3k4type}.bed", \
            chrom="input/hg38.chromInfo", \
-           region='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
-    output: "output/supp_fig4/bedtools_intersect/{h3k4type}/bedtools_intersect_{region}.bed"
+           region='output/supp_table2/benchmarked_regions/ologram_{region}_pygtftk.bed'
+    output: "output/supp_table2/bedtools_intersect/{h3k4type}/bedtools_intersect_{region}.bed"
     shell: """
     bedtools intersect -a {input.peak} -b {input.region} -wa -u > {output}
     """
@@ -264,12 +264,12 @@ def capitalize_region_name(wildcards):
 rule binomial_test:
     input: pdf3="output/supp_fig3/supplfig3.pdf", \
            pdf2="output/supp_fig2/supplfig2.pdf", \
-           intersections="output/supp_fig4/bedtools_intersect/{h3k4type}/bedtools_intersect_{region}.bed", \
+           intersections="output/supp_table2/bedtools_intersect/{h3k4type}/bedtools_intersect_{region}.bed", \
            peak="input/peaks/{h3k4type}.bed", \
            chrom="input/hg38.chromInfo", \
-           region_bed='output/supp_fig4/benchmarked_regions/ologram_{region}_pygtftk.bed'
+           region_bed='output/supp_table2/benchmarked_regions/ologram_{region}_pygtftk.bed'
     params: region=capitalize_region_name, hg38_size=HG38_SIZE
-    output: "output/supp_fig4/binomial_test/{h3k4type}/binomial_test_{region}.txt"
+    output: "output/supp_table2/binomial_test/{h3k4type}/binomial_test_{region}.txt"
     run: R('''
              nb_intersections <- nrow(read.table('{input.intersections}'))
              nb_trials <- nrow(read.table('{input.peak}'))
@@ -277,24 +277,22 @@ rule binomial_test:
              sum_labeled_nuc <- sum(region_bed[,3] - region_bed[,2])
              prob <- sum_labeled_nuc/{params.hg38_size}
              expected_val <- prob * nb_trials
-             p_val_more <- pbinom(q=nb_intersections-1, 
-                             size=nb_trials, 
-                             prob=prob, 
+             p_val_more <- pbinom(q=nb_intersections-1,
+                             size=nb_trials,
+                             prob=prob,
                              lower.tail = FALSE)
-             p_val_less <- pbinom(q=nb_intersections, 
-                                  size=nb_trials, 
-                                  prob=prob, 
+             p_val_less <- pbinom(q=nb_intersections,
+                                  size=nb_trials,
+                                  prob=prob,
                                   lower.tail = TRUE)
-             out_df <- t(data.frame(nb_success=nb_intersections, 
+             out_df <- t(data.frame(nb_success=nb_intersections,
                                     sum_labeled_nuc=sum_labeled_nuc,
                                     genome_size={params.hg38_size},
                                     nb_trials=nb_trials,
                                     expected_val=expected_val,
                                     prob=prob,
-                                    p_val_more=p_val_more, 
-                                    p_val_less=p_val_less, 
+                                    p_val_more=p_val_more,
+                                    p_val_less=p_val_less,
                                     row.names='{params.region}'))
              write.table(out_df, file='{output}', col.names=NA, quote=F)
              ''')
-
-    
