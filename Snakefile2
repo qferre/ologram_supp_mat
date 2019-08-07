@@ -48,6 +48,7 @@ rule minibatch_small:
             -o output/supp_fig4/ologram_output
       done
     done
+    touch {output}
     '''
 
 rule minibatch_medium:
@@ -66,6 +67,7 @@ rule minibatch_medium:
             -o output/supp_fig4/ologram_output
       done
     done
+    touch {output}
     '''
 
 rule minibatch_large:
@@ -82,6 +84,7 @@ rule minibatch_large:
             --force-chrom-peak   --force-chrom-more-bed  -K output/supp_fig4/ologram_tmp\
             -o output/supp_fig4/ologram_output
     done
+    touch {output}
     '''
 
 
