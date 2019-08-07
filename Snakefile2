@@ -3,6 +3,8 @@ workdir: os.getcwd()
 # ---------------------------------------------------------------------------- #
 #                           Supplementary Figure 4                             #
 # ---------------------------------------------------------------------------- #
+# Evolution of Negative Binomial distribution parameters as a function of the
+# number of shuffles in OLOGRAM
 
 rule all:
     input:  "output/supp_fig4/S_mean_boxplot.pdf", "output/supp_fig4/S_var_boxplot.pdf"
